@@ -1,0 +1,44 @@
+####Source : https://www.ctxblog.fr/2017/03/15/verifier-la-validite-dun-certificat-ssl/
+##URL check
+$Urls="https://toto.com","https://toto.me","https://toto.fr"
+$HaskCheckurl =  @()
+
+##Get Local Path
+$Path = Split-Path -Parent $MyInvocation.MyCommand.Path
+
+Foreach ($Url in $Urls)
+{
+$FileCrt=$Url.split("/")[2]
+$PathFileCrt="$Path\$FileCrt.cer"
+
+#Connect and export cer file
+$webRequest = [Net.WebRequest]::Create($Url)
+$CheckRequest=try { $webRequest.GetResponse() } catch {}
+$cert = $webRequest.ServicePoint.Certificate
+$bytes = $cert.Export([Security.Cryptography.X509Certificates.X509ContentType]::Cert)
+
+$ExportCertFile=set-content -value $bytes -encoding byte -path $PathFileCrt
+
+#Read cer file
+$CRT = New-Object System.Security.Cryptography.X509Certificates.X509Certificate
+$CRT.Import($PathFileCrt)
+
+#Format Expiration CRL in dd/mm/yyyy
+$CRTDateExpi=$CRT.getexpirationdatestring()|get-date -Format d 
+
+$Date=Get-Date -Format d
+
+#Compare $CRLDateExpi with today
+$CRLDayExpi = New-TimeSpan -Star $Date -End $CRTDateExpi
+$ExportDay=$CRLDayExpi.days
+
+if ($ExportDay -lt 30) {$SslStatut="Warning"} else {$SslStatut="Ok"}
+
+$HaskCheckurl +=  @($Url | Select @{n="Url(s)";e={$Url}},@{n="SSL expire date time";e={$CRTDateExpi}}, @{n="SSL Expire (in days)";e={$ExportDay}}, @{n="Statut";e={$SslStatut}})
+
+#$CheckRequest.close()
+
+Remove-item $PathFileCrt -force
+}
+
+$HaskCheckurl|ft -autosize
